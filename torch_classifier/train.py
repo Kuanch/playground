@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -41,6 +42,26 @@ def train():
                 writer.add_figure('predictions vs. actuals',
                                   plot_classes_preds(model, inputs, labels),
                                   global_step=epoch)
+
+            if i % 700 == 699:
+                with torch.no_grad():
+                    TP = FP = TN = FN = 0
+                    for j in range(10):
+                        images, labels = dataset.read_test()
+                        output = model(images)
+                        _, class_preds_batch = torch.max(output, 1)
+                        np_labels = labels.cpu().numpy()
+                        np_preds = class_preds_batch.cpu().numpy()
+
+                        TP += sum(np_labels[np.where(np_preds == 1)[0]] == 1)
+                        FP += sum(np_labels[np.where(np_preds == 1)[0]] == 0)
+                        TN += sum(np_labels[np.where(np_preds == 0)[0]] == 0)
+                        FN += sum(np_labels[np.where(np_preds == 0)[0]] == 1)
+
+                    precision = TP / (TP + FP)
+                    recall = TP / (TP + FN)
+                    writer.add_scalar("Val/precision", precision, epoch)
+                    writer.add_scalar("Val/recall", recall, epoch)
 
     writer.flush()
     writer.close()
