@@ -3,6 +3,7 @@ __pycache__/
 *.swp
 *.py[cod]
 *$py.class
+data/
 
 # C extensions
 *.so
