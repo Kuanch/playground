@@ -1,0 +1,13 @@
+import torch
+import torchvision.models as models
+
+
+def get_network(network_name, num_classes=1000, pretrained=True):
+    if hasattr(models, network_name):
+        pretrained_model = getattr(models, network_name)(pretrained=pretrained)
+        if pretrained and num_classes != 1000:
+            fully_connect = torch.nn.Linear(1000, num_classes)
+            return torch.nn.Sequential(pretrained_model, fully_connect)
+
+    else:
+        raise ImportError('Unknown network {}'.format(network_name))
