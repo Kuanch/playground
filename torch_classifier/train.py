@@ -1,9 +1,11 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.utils.tensorboard import SummaryWriter
 
 from net import network
 from dataset import dataloader
+from utils.utils import plot_classes_preds
 
 
 def train():
@@ -11,6 +13,7 @@ def train():
     dataset = dataloader.TorchLoader('CIFAR10', train_batch_size=64, test_batch_size=128)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
+    writer = SummaryWriter()
 
     for epoch in range(10):
         running_loss = 0.
@@ -23,6 +26,7 @@ def train():
             # forward + backward + optimize
             outputs = model(inputs)
             loss = criterion(outputs, labels)
+            writer.add_scalar("Loss/train", loss, i)
             loss.backward()
             optimizer.step()
 
@@ -31,6 +35,15 @@ def train():
             if i % 10 == 9:
                 print('[%d, %5d] loss: %.3f' % (epoch + 1, i + 1, running_loss / 10))
                 running_loss = 0.0
+
+            if i % 700 == 699:
+                print('draw training predictions')
+                writer.add_figure('predictions vs. actuals',
+                                  plot_classes_preds(model, inputs, labels),
+                                  global_step=epoch)
+
+    writer.flush()
+    writer.close()
 
 
 if __name__ == '__main__':
