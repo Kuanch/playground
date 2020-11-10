@@ -1,3 +1,6 @@
+import time
+import argparse
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -6,19 +9,24 @@ from torch.utils.tensorboard import SummaryWriter
 
 from net import network
 from dataset import dataloader
+from dataset import data_prefetcher
 from utils.utils import plot_classes_preds
 
 
-def train():
-    model = network.get_network('resnet18', num_classes=10).cuda()
-    dataset = dataloader.TorchLoader('CIFAR10', train_batch_size=64, test_batch_size=128)
+def train(args):
+    model = network.get_classifier(args.model_name, num_classes=10).cuda()
+    dataset = dataloader.TorchLoader(args.dataset_name, train_batch_size=args.train_batch_size, test_batch_size=args.test_batch_size)
+    train_prefetcher = data_prefetcher.DataPrefetcher(dataset.train_loader)
+    test_prefetcher = data_prefetcher.DataPrefetcher(dataset.test_loader)
+    len_train_dataset = len(dataset.train_loader)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
-    writer = SummaryWriter()
+    writer = SummaryWriter('./runs/test')
 
-    for epoch in range(10):
+    for epoch in range(args.epoch):
         running_loss = 0.
-        for i in range(len(dataset.train_loader)):
+        for i in range(len(train_prefetcher)):
+            st_time = time.time()
             inputs, labels = dataset.read_train()
 
             # zero the parameter gradients
@@ -27,9 +35,12 @@ def train():
             # forward + backward + optimize
             outputs = model(inputs)
             loss = criterion(outputs, labels)
-            writer.add_scalar("Loss/train", loss, i)
+            writer.add_scalar("Loss/train", loss, epoch * len_train_dataset + i)
             loss.backward()
             optimizer.step()
+
+            end_time = time.time()
+            writer.add_scalar('Train/time_pre_step', end_time - st_time, epoch * len_train_dataset + i)
 
             # print statistics
             running_loss += loss.item()
@@ -37,16 +48,18 @@ def train():
                 print('[%d, %5d] loss: %.3f' % (epoch + 1, i + 1, running_loss / 10))
                 running_loss = 0.0
 
+            del loss
+
             if i % 700 == 699:
                 print('draw training predictions')
                 writer.add_figure('predictions vs. actuals',
                                   plot_classes_preds(model, inputs, labels),
-                                  global_step=epoch)
+                                  global_step=epoch * len_train_dataset + i)
 
             if i % 700 == 699:
                 with torch.no_grad():
                     TP = FP = TN = FN = 0
-                    for j in range(10):
+                    for j in range(len(test_prefetcher)):
                         images, labels = dataset.read_test()
                         output = model(images)
                         _, class_preds_batch = torch.max(output, 1)
@@ -60,13 +73,21 @@ def train():
 
                     precision = TP / (TP + FP)
                     recall = TP / (TP + FN)
-                    writer.add_scalar("Val/precision", precision, epoch)
-                    writer.add_scalar("Val/recall", recall, epoch)
+                    writer.add_scalar("Val/precision", precision, epoch * len_train_dataset + i)
+                    writer.add_scalar("Val/recall", recall, epoch * len_train_dataset + i)
 
     writer.flush()
     writer.close()
 
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--model_name', default='resnet18')
+    parser.add_argument('--dataset_name', default='CIFAR10')
+    parser.add_argument('--dataset_path', default=None)
+    parser.add_argument('--epoch', type=int, default=1)
+    parser.add_argument('--train_batch_size', type=int, default=32)
+    parser.add_argument('--test_batch_size', type=int, default=128)
+    args = parser.parse_args()
     torch.backends.cudnn.benchmark = True
-    train()
+    train(args)
