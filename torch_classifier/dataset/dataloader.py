@@ -5,11 +5,11 @@ from tfrecord.torch.dataset import TFRecordDataset
 
 
 class TFRecordLoader(object):
-    def __init__(self, tfrecord_path, batch_size):
-        description = {"image": "byte", "label": "float"}
-        index_path = None
-        dataset = TFRecordDataset(tfrecord_path, index_path, description)
-        self.loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size)
+    def __init__(self, tfrecord_path, description=None, index_path=None, batch_size=16, transform_fn=None):
+        if description is None:
+            description = {"image": "byte", "label": "float"}
+        self.dataset = TFRecordDataset(tfrecord_path, index_path, description, transform=transform_fn)
+        self.loader = torch.utils.data.DataLoader(self.dataset, batch_size=batch_size)
 
     def read(self):
         return next(iter(self.loader))
@@ -23,6 +23,7 @@ class TorchLoader(object):
         transform = transforms.Compose([transforms.ToTensor(),
                                         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
         if hasattr(torchvision.datasets, dataset_name):
+
             train_set = getattr(torchvision.datasets, dataset_name)(root='./data',
                                                                     train=True,
                                                                     download=True,
@@ -30,7 +31,8 @@ class TorchLoader(object):
             self.train_loader = torch.utils.data.DataLoader(train_set,
                                                             batch_size=train_batch_size,
                                                             shuffle=True,
-                                                            num_workers=1)
+                                                            num_workers=0,
+                                                            pin_memory=True)
             test_set = getattr(torchvision.datasets, dataset_name)(root='./data',
                                                                    train=False,
                                                                    download=True,
@@ -38,15 +40,16 @@ class TorchLoader(object):
             self.test_loader = torch.utils.data.DataLoader(test_set,
                                                            batch_size=test_batch_size,
                                                            shuffle=True,
-                                                           num_workers=1)
+                                                           num_workers=0,
+                                                           pin_memory=True)
 
         else:
             raise ImportError('unknown dataset {}, only torchvision seems not to support'.format(dataset_name))
 
     def read_train(self):
         images, labels = next(iter(self.train_loader))
-        return images.cuda(), labels.cuda()
+        return images.cuda(non_blocking=True), labels.cuda(non_blocking=True)
 
     def read_test(self):
         images, labels = next(iter(self.test_loader))
-        return images.cuda(), labels.cuda()
+        return images.cuda(non_blocking=True), labels.cuda(non_blocking=True)
